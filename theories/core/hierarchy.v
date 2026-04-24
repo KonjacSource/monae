@@ -488,19 +488,112 @@ Definition remove_C A B C (g : (C -> A) -> (C -> B)) (c : C) (a : A) :=
 Lemma prefixK A B C (f : A -> B) (c : C) : remove_C (prefix_C f) c = f.
 Proof. by []. Qed.
 
+(*
+Qu: The motivation is to make every applicative expression to the following form, consider it as some kind of normal form.
+
+liftA2 f u v
+
+where `f u v` do not contain any applicative operation.
+
+Luckily 2 is enough for these case. 
+*)
+
+Infix "<*>" := apply (at level 50, left associativity).
+
+Definition liftA2 {A B C} (f : A -> B -> C) (a : F A) (b : F B) : F C := 
+  pure f <*> a <*> b.
+
+Let liftA2E {A B C} (f : A -> B -> C) (a : F A) (b : F B) : pure f <*> a <*> b = liftA2 f a b.
+by [].
+Qed.
+
+Lemma composition' {A B C} {U : applicative} (u : U (B -> C)) (v : U (A -> B)) (w : U A) : 
+  u <*> (v <*> w) = pure comp <*> u <*> v <*> w.
+Proof.
+  have H : u <*> (v <*> w) = (apply u \o apply v) w.
+    reflexivity.
+  rewrite H.
+  rewrite <- afcomposition.
+  reflexivity.
+Qed.
+
+Lemma liftA2_map1 {A B C D} (f : C -> B -> D) (g : A -> C) (a : F A) (b : F B) :
+  liftA2 f ((F # g) a) b = liftA2 (fun a b => f (g a) b) a b.
+Proof.
+  unfold liftA2.
+  rewrite afmapE.
+  rewrite composition'.
+  repeat rewrite afhomomorphism.
+  reflexivity.
+Qed.
+
+Lemma liftA2_map2 {A B C D} (f : A -> C -> D) (g : B -> C) (a : F A) (b : F B) :
+  liftA2 f a ((F # g) b) = liftA2 (fun a b => f a (g b)) a b.
+Proof.
+  have H := liftA2_map1.
+  (* I want to unfold at H. *)
+  revert H. 
+  unfold liftA2.
+  rewrite afmapE.
+  rewrite composition'.
+  intro H.
+  rewrite <- (afmapE _ _ f).
+  rewrite H.
+  rewrite afinterchange.
+  rewrite <- (afmapE _ _ (fun a0 : A => [eta comp (f a0)])).
+  rewrite H.
+  reflexivity.
+Qed.
+
+Lemma map_liftA2 {A B C D} (f : C -> D) (g : A -> B -> C) (u : F A) (v : F B) :
+  (F # f) (liftA2 g u v) = liftA2 (fun a b => f (g a b)) u v.
+Proof.
+  unfold liftA2.
+  rewrite afmapE.
+  rewrite composition'.
+  rewrite afhomomorphism.
+  rewrite composition'.
+  rewrite afhomomorphism.
+  rewrite afhomomorphism.
+  reflexivity.
+Qed.
+
 Let _composition : ApplicativeLaws.composition comp_pure comp_apply.
 Proof.
+
 move=> A B C u v.
 
-rewrite /comp_apply /comp_pure !afmapE /=.
-rewrite afhomomorphism.
-rewrite -afcomposition.
+repeat rewrite comp_apply_eq. 
 
-rewrite -!afmapE.
-rewrite -!/((_ \o _) u).
-rewrite -!functor_o.
+(* I want to `simpl` at u v *)
+revert u v.
+simpl.
+move=> u v.
+
+rewrite <- afcomposition.
+rewrite afhomomorphism.
+repeat rewrite liftA2E.
+repeat rewrite <- afmapE.
 congr apply.
-Abort.
+repeat rewrite liftA2_map1. 
+rewrite liftA2_map2.
+rewrite map_liftA2.
+suff H : (fun (a : G (B -> C)) (b : G (A -> B)) => apply ((G # comp) a <*> b)) 
+       = (fun (a : G (B -> C)) (b : G (A -> B)) => apply a \o apply b).
+rewrite H.
+reflexivity.
+(* Layer F is done, now turn to G *)
+apply funext_dep.
+intro x.
+apply funext_dep.
+intro y.
+apply funext_dep.
+intro z.
+simpl.
+rewrite afmapE.
+rewrite composition'.
+reflexivity.
+Qed.
 
 Let _homomorphism : ApplicativeLaws.homomorphism comp_pure comp_apply.
 Proof.
@@ -511,12 +604,26 @@ Let _interchange : ApplicativeLaws.interchange comp_pure comp_apply.
 Proof.
 move=> A B f y; rewrite /comp_apply /comp_pure !afmapE /= !afhomomorphism.
 rewrite !afinterchange.
-Abort.
+rewrite composition'.
+suff H : pure comp <*> pure (revapply (pure y)) <*> pure apply 
+     = pure (apply (pure (revapply y))).
+rewrite H.
+reflexivity.
+intros U V T.
+repeat rewrite afhomomorphism.
+congr pure.
+apply funext_dep.
+intro x.
+simpl.
+rewrite afinterchange.
+reflexivity.
+Qed.
 
 (*
 HB.instance Definition _ := isApplicative.Build (F \o G) comp_id comp_comp.
 *)
 End applicative_composition.
+
 
 Module JoinLaws.
 Section join_laws.
@@ -993,8 +1100,7 @@ Definition bassert {A : UU0} (p : pred A) (m : M A) : M A := m >>= assert p.
 Lemma commutativity_of_assertions A q :
   Join \o (M # (bassert q)) = bassert q \o Join :> (_ -> M A).
 Proof.
-apply boolp.funext => x; rewrite !compE join_fmap /bassert joinE.
-by rewrite -/(_ >>= _) bindA.
+by apply boolp.funext => x; rewrite !compE join_fmap /bassert joinE bindA.
 Qed.
 
 (* guards commute with anything *)
