@@ -488,111 +488,52 @@ Definition remove_C A B C (g : (C -> A) -> (C -> B)) (c : C) (a : A) :=
 Lemma prefixK A B C (f : A -> B) (c : C) : remove_C (prefix_C f) c = f.
 Proof. by []. Qed.
 
-(*
-Qu: The motivation is to make every applicative expression to the following form, consider it as some kind of normal form.
-
-liftA2 f u v
-
-where `f u v` do not contain any applicative operation.
-
-Luckily 2 is enough for these case. 
-*)
-
-Infix "<*>" := apply (at level 50, left associativity).
-
-Definition liftA2 {A B C} (f : A -> B -> C) (a : F A) (b : F B) : F C := 
-  pure f <*> a <*> b.
-
-Let liftA2E {A B C} (f : A -> B -> C) (a : F A) (b : F B) : pure f <*> a <*> b = liftA2 f a b.
-by [].
-Qed.
-
 Lemma composition' {A B C} {U : applicative} (u : U (B -> C)) (v : U (A -> B)) (w : U A) : 
-  u <*> (v <*> w) = pure comp <*> u <*> v <*> w.
+  apply u (apply v w) = apply (apply (apply (pure comp) u) v) w.
 Proof.
-  have H : u <*> (v <*> w) = (apply u \o apply v) w.
+  have H : apply u (apply v w) = (apply u \o apply v) w.
     reflexivity.
   rewrite H.
   rewrite <- afcomposition.
   reflexivity.
 Qed.
 
-Lemma liftA2_map1 {A B C D} (f : C -> B -> D) (g : A -> C) (a : F A) (b : F B) :
-  liftA2 f ((F # g) a) b = liftA2 (fun a b => f (g a) b) a b.
-Proof.
-  unfold liftA2.
-  rewrite afmapE.
-  rewrite composition'.
-  repeat rewrite afhomomorphism.
-  reflexivity.
-Qed.
-
-Lemma liftA2_map2 {A B C D} (f : A -> C -> D) (g : B -> C) (a : F A) (b : F B) :
-  liftA2 f a ((F # g) b) = liftA2 (fun a b => f a (g b)) a b.
-Proof.
-  have H := liftA2_map1.
-  (* I want to unfold at H. *)
-  revert H. 
-  unfold liftA2.
-  rewrite afmapE.
-  rewrite composition'.
-  intro H.
-  rewrite <- (afmapE _ _ f).
-  rewrite H.
-  rewrite afinterchange.
-  rewrite <- (afmapE _ _ (fun a0 : A => [eta comp (f a0)])).
-  rewrite H.
-  reflexivity.
-Qed.
-
-Lemma map_liftA2 {A B C D} (f : C -> D) (g : A -> B -> C) (u : F A) (v : F B) :
-  (F # f) (liftA2 g u v) = liftA2 (fun a b => f (g a b)) u v.
-Proof.
-  unfold liftA2.
-  rewrite afmapE.
-  rewrite composition'.
-  rewrite afhomomorphism.
-  rewrite composition'.
-  rewrite afhomomorphism.
-  rewrite afhomomorphism.
-  reflexivity.
-Qed.
+(*
+Conjecture. (maybe there is a proof somewhere, I did not search)
+For an applicative functor `F`,
+a set of variable `i j k ...` , such that there is no `F` in their types,
+a set of variable `a b c ...` , such that their types are `F ...`,
+an expression `i j k ... a b c ... |- E : F ...`, 
+  where `E` contains only variables and `pure` and `<*>`,
+we can rewrite `E` into the following form,
+  pure M <*> a1 <*> a2 <*> a3 <*> ...
+such that 
+  {a1, a2, a2, ...} is subset of {a, b, c, ...}
+and
+  i j k ... |- M 
+holds.
+*)
+Ltac applicative_normalize := 
+  simpl;
+  repeat first 
+  [ rewrite afmapE
+  | rewrite afhomomorphism
+  | rewrite composition'
+  | rewrite <- afcomposition
+  | rewrite afinterchange 
+  (* interchange should terminating because we try homomorphism first *)
+  ];
+  try reflexivity. 
 
 Let _composition : ApplicativeLaws.composition comp_pure comp_apply.
 Proof.
-
 move=> A B C u v.
-
 repeat rewrite comp_apply_eq. 
-
-(* I want to `simpl` at u v *)
-revert u v.
-simpl.
-move=> u v.
-
-rewrite <- afcomposition.
-rewrite afhomomorphism.
-repeat rewrite liftA2E.
-repeat rewrite <- afmapE.
-congr apply.
-repeat rewrite liftA2_map1. 
-rewrite liftA2_map2.
-rewrite map_liftA2.
-suff H : (fun (a : G (B -> C)) (b : G (A -> B)) => apply ((G # comp) a <*> b)) 
-       = (fun (a : G (B -> C)) (b : G (A -> B)) => apply a \o apply b).
-rewrite H.
-reflexivity.
+applicative_normalize.
 (* Layer F is done, now turn to G *)
-apply funext_dep.
-intro x.
-apply funext_dep.
-intro y.
-apply funext_dep.
-intro z.
-simpl.
-rewrite afmapE.
-rewrite composition'.
-reflexivity.
+congr (fun x => apply (apply (apply (pure x) u) v)).
+repeat (apply funext_dep; intro).
+applicative_normalize.
 Qed.
 
 Let _homomorphism : ApplicativeLaws.homomorphism comp_pure comp_apply.
@@ -603,20 +544,11 @@ Qed.
 Let _interchange : ApplicativeLaws.interchange comp_pure comp_apply.
 Proof.
 move=> A B f y; rewrite /comp_apply /comp_pure !afmapE /= !afhomomorphism.
-rewrite !afinterchange.
-rewrite composition'.
-suff H : pure comp <*> pure (revapply (pure y)) <*> pure apply 
-     = pure (apply (pure (revapply y))).
-rewrite H.
-reflexivity.
-intros U V T.
-repeat rewrite afhomomorphism.
-congr pure.
+applicative_normalize.
+congr (fun x => apply (pure x) f).
 apply funext_dep.
-intro x.
-simpl.
-rewrite afinterchange.
-reflexivity.
+intro.
+applicative_normalize.
 Qed.
 
 (*
