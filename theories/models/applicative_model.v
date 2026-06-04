@@ -345,7 +345,7 @@ Thus we are free to choose a monoid.
 
 (*Suppose there exists a monoid T, such that, at least two elements in it *)
 Variable e' : T.
-Variable e'ne : ~ e' = e.
+Variable e'ne : e' <> e.
 
 (* For any join, with law,*)
 Variable join'' : F \o F ~> F.
@@ -431,5 +431,38 @@ HB.instance Definition _ :=
   isApplicativeFunctor.Build
     (Validation op) afidentity afcomposition afhomomorphism afinterchange.
 
+Section non_monad.
+
+(* If E ~ Unit, then Validation op A ~ Option A. 
+  Thus it is a monad, so we prove the following statement, as we did for Const,
+  (forall E (op : Semigroup E), Validation op is a monad) -> False
+  
+  Proof sketch.
+    
+    If we have (forall E (op : Semigroup E), Validation op is a monad), we should have a function 
+      bind : forall E op A B, Validation op A -> (A -> Validation op B) -> Validation B
+    note E here is under the forall binder, thus the following equation must hold propositionally because of parametricity, 
+      bindFail : bind (Fail e) f = Fail (e * n)     -- E is a random type, op and e are the only ways to construct element of E
+    where (e * n) is defined forall positive natural number n > 0,
+      e * n       = e 
+      e * (n + 1) = op e (e * n)
+
+    For any n, take semigroup (nat, +), 
+    and two natural number a and b s.t. a is coprime with (a + b). 
+        e.g. a = 3, b = 4  
+
+                   Fail 7
+    =[ -Define  ]= apply (Fail 3) (Fail 4) 
+    =[  applyE  ]= bind (Fail 3) (fun x1 => bind (Fail 4) (fun x2 => pure (x1 x2)))
+    =[ bindFail ]= Fail (3 * n)
+
+    so that 
+      3 * n = 7
+
+    which is impossible.
+
+  But there is no way to prove bindFail.
+*)
+End non_monad.
 End validation.
 End Validation.
