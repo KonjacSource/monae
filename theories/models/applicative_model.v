@@ -1,4 +1,3 @@
-Require Import JMeq.
 From mathcomp Require Import all_ssreflect.
 From mathcomp Require Import finmap.
 From mathcomp Require boolp.
@@ -320,63 +319,39 @@ Qed.
 HB.instance Definition _ := isNatural.Build _ _ _ join_naturality.
 HB.instance Definition _ := isNatural.Build _ _ _ ret_naturality.
 
-Let join : F \o F ~> F := join'.
-
-Let joinretM : JoinLaws.left_unit ret join.
-Proof.
-move=> A; apply: boolp.funext => /= t /=.
-Abort.
-(* Seems impossible, for any definition of join: how can one recover t ? *)
-
 Section non_monad.
-(*
-Definition.
-  Const T is monad iff. exists join, monad laws hold for (pure, join)
-
-There are two ways to say Const T is not a monad.
-H1 : forall T : monoid, Const T is monad -> False 
-H2 : (forall T : monoid, Const T is monad) -> False
-
-H1 is not true, because we can choose T to be a single point monoid {e}
-H2 can be proved, without using LEM, by 
-H2' : exists T : monoid, forall join, monad laws -> False
-Thus we are free to choose a monoid.
-*)
-
-(*Suppose there exists a monoid T, such that, at least two elements in it *)
-Variable e' : T.
-Variable e'ne : e' <> e.
 
 (* For any join, with law,*)
-Variable join'' : F \o F ~> F.
-Variable lu : JoinLaws.left_unit ret join''.
+Variable join : F \o F ~> F.
+Variable lu : JoinLaws.left_unit ret join.
 
-Lemma lu_expand : forall A (x : F A), join'' A (Ret x) = x.
+Let lu_expand : forall A (x : F A), join A (Ret x) = x.
 Proof.
 move => A x.
+(* TODO: better way? *)
 have H : forall (A B : UU0) (f : B -> A) (g : A -> B) (x : A), (f \o g) x = id x -> f (g x) = x.
 - by [].
 apply H.
 by rewrite lu //.
 Qed.
 
-Lemma contradiction : False.
+Lemma necessarity (e' : T): e = e'.
 Proof.
-have lu' := @lu_expand unit.
-apply: e'ne.
-by rewrite -(lu' e') -(lu' e).
+have H := lu_expand e'.
+have H' := lu_expand e.
+suff G: join T (Ret e') = e.
+by rewrite -(H T).
+by rewrite -H' /= /pure.
 Qed.
 
 End non_monad.
 End join.
 End theory.
 
-Theorem constNonMonad : 
-  (forall (T : UU0) (e : T) (op : Monoid.law e), ApplicativeFunctor_isMonad (Const op)) -> False.
+Theorem constNonmonadic (T : UU0) (e : T) (op : Monoid.law e): 
+  ApplicativeFunctor_isMonad (Const op) -> forall (e' : T), e = e'.
 move => H.
-have H' := @H nat 0 addn.
-have neq : 1 <> 0. done.
-by exact (contradiction neq (ApplicativeFunctor_isMonad.join H') (ApplicativeFunctor_isMonad.joinretM H')).
+by exact (necessarity (ApplicativeFunctor_isMonad.join H) (ApplicativeFunctor_isMonad.joinretM H)).
 Qed.
 End Const.
 
@@ -432,37 +407,92 @@ HB.instance Definition _ :=
     (Validation op) afidentity afcomposition afhomomorphism afinterchange.
 
 Section non_monad.
+Let F := Validation op.
+Let FF := F \o F.
+Variable join : FF ~> F. 
+Variable ru : JoinLaws.right_unit pure join.
+Variable applyE : forall A B (f : F (A -> B)) (x : F A), 
+  apply f x = join B ((_ # fun f' => join _ ((_ # fun x' => pure (f' x')) x)) f).
 
-(* If E ~ Unit, then Validation op A ~ Option A. 
-  Thus it is a monad, so we prove the following statement, as we did for Const,
-  (forall E (op : Semigroup E), Validation op is a monad) -> False
-  
-  Proof sketch.
-    
-    If we have (forall E (op : Semigroup E), Validation op is a monad), we should have a function 
-      bind : forall E op A B, Validation op A -> (A -> Validation op B) -> Validation B
-    note E here is under the forall binder, thus the following equation must hold propositionally because of parametricity, 
-      bindFail : bind (Fail e) f = Fail (e * n)     -- E is a random type, op and e are the only ways to construct element of E
-    where (e * n) is defined forall positive natural number n > 0,
-      e * n       = e 
-      e * (n + 1) = op e (e * n)
+Let ru_expand : forall A (x : F A), join A ((F # @pure _) x) = x.
+Proof.
+move => A x.
+have H : forall (A B : UU0) (f : B -> A) (g : A -> B) (x : A), (f \o g) x = id x -> f (g x) = x.
+- by [].
+apply H.
+by rewrite ru.
+Qed.
 
-    For any n, take semigroup (nat, +), 
-    and two natural number a and b s.t. a is coprime with (a + b). 
-        e.g. a = 3, b = 4  
+Let isFail {A : UU0} (v : F A): UU0 := { e & v = Fail op _ e}.
 
-                   Fail 7
-    =[ -Define  ]= apply (Fail 3) (Fail 4) 
-    =[  applyE  ]= bind (Fail 3) (fun x1 => bind (Fail 4) (fun x2 => pure (x1 x2)))
-    =[ bindFail ]= Fail (3 * n)
+Let all_fail_is_fmapped A e : (Fail op (F A) e) = (F # @pure _) (Fail op A e).
+Proof.
+by [].
+Qed.
 
-    so that 
-      3 * n = 7
+(* join (Fail e) == join (F # pure (Fail e)) =[right unit]= Fail e *)
+Let join_fail : forall (A : UU0) (e : E), isFail (join A (Fail op _ e)).
+move => A e.
+exists e.
+by rewrite all_fail_is_fmapped ru_expand.
+Defined.
 
-    which is impossible.
+Let j1 (A : UU0) (e : E) : E := 
+  projT1 (join_fail A e).
 
-  But there is no way to prove bindFail.
+Let j2 (A : UU0) (e : E) : join A (Fail op _ e) = Fail op _ (j1 A e) := 
+  projT2 (join_fail A e).
+
+Let j1E A e : j1 A e = e.
+Proof.
+unfold j1.
+by [].
+Qed.
+
+Let fmap_fail A B (f : A -> B) (e : E) : (F # f) (Fail op _ e) = Fail op _ e.
+Proof.
+by [].
+Qed.
+
+(* 
+apply (Fail a : F (unit -> unit)) (Fail b : F unit) == Fail (op a b)
+=[applyE]=    jo ([\f'. jo ([\x'. pure (f' x')] x)] f) [f := Fa, x := Fb]
+==            jo ([\f'. jo ([\x'. pure (f' x')] Fb)] Fa)
+=[fmap_fail]= jo ([\f'. jo Fb] Fa)
+=[fmap_fail]= jo {unit} Fa
+=[j2]=        Fail $ f a
 *)
+Let apply_fail x y : apply (Fail op (unit -> unit) x) (Fail op unit y) = Fail op _ (op x y).
+Proof.
+by [].
+Qed.
+
+
+Lemma necessarity x y : op x y = x.
+Proof.
+have H : Fail op unit x = Fail op unit (op x y).
+- by rewrite -[in RHS]apply_fail applyE fmap_fail j2.
+by case: H.
+Qed.
+
 End non_monad.
+
+Let F := Validation op.
+
+Theorem validationNonmonad : ApplicativeFunctor_isMonad F -> forall x y, op x y = x.
+Proof.
+move => H.
+eapply necessarity.
+- exact: (ApplicativeFunctor_isMonad.joinMret H).
+move => A B f x.
+have h := ApplicativeFunctor_isMonad.applyE H.
+rewrite /hierarchy.apply /= in h.
+rewrite h (ApplicativeFunctor_isMonad.bindE H).
+congr (fun x => ApplicativeFunctor_isMonad.join H B ((F # x) f)).
+apply: boolp.funext => a.
+by rewrite (ApplicativeFunctor_isMonad.bindE H).
+Qed.
+
 End validation.
+
 End Validation.

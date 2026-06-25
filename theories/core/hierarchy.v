@@ -463,6 +463,7 @@ Qed.
 Let afcomposition1 A B C u v := esym (@afcomposition F A B C u v).
 Let afcomposition2 A B C u v w : apply u (apply v w) = _ :=
   f_equal (fun f => f w) (@afcomposition1 A B C u v).
+
 Definition applicativeE := (afcomposition1,afcomposition2,@afinterchange F).
 End applicative_properties.
 
